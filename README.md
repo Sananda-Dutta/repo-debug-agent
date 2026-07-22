@@ -31,3 +31,43 @@ make run
 - [ ] Phase 12: Token Usage & Savings Dashboard
 - [ ] Phase 13: FastAPI Service Layer
 - [ ] Phase 14: Evaluation & Packaging
+
+Day2:
+
+feat(ingestion): add repository ingestion layer (clone/load + validate)
+
+- Add RepoSource/RepoMetadata models (Pydantic)
+- Add source_resolver: normalize URL/shorthand/local-path input
+- Add cloner: GitPython-based shallow clone with token auth + ref checkout
+- Add validator: post-clone sanity checks (non-empty, contains source code)
+- Add RepoIngestionService orchestrating resolve -> clone -> validate -> metadata
+- Pin commit_sha in metadata for reproducible downstream analysis
+- Add shared AgentError/IngestionError exception hierarchy
+- Add full ingestion test suite (source resolver, validator, service)
+
+Phase 2/14 of Repo-Aware Autonomous Debugging Agent (Token Efficiency Hackathon)
+
+### Status: Phase 2 Complete — Repository Ingestion
+
+- [x] Phase 1: Project Foundation & Config
+- [x] Phase 2: Repository Ingestion
+- [ ] Phase 3: Codebase Indexing (Tree-sitter/AST)
+...
+
+### Usage (Phase 2)
+
+```python
+from repo_debug_agent.ingestion.service import RepoIngestionService
+
+service = RepoIngestionService()
+
+# Any of these work:
+metadata = service.ingest("psf/requests")                          # shorthand
+metadata = service.ingest("https://github.com/psf/requests")       # URL
+metadata = service.ingest("/path/to/already/cloned/repo")          # local path
+
+print(metadata.full_name, metadata.commit_sha)
+```
+
+Supported inputs: GitHub HTTPS/SSH URLs, `owner/repo` shorthand, or an existing
+local directory. Private repos require `GITHUB_TOKEN` set in `.env`.

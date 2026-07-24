@@ -71,3 +71,18 @@ print(metadata.full_name, metadata.commit_sha)
 
 Supported inputs: GitHub HTTPS/SSH URLs, `owner/repo` shorthand, or an existing
 local directory. Private repos require `GITHUB_TOKEN` set in `.env`.
+
+
+Day: 3
+feat(indexing): add Tree-sitter based multi-language codebase indexing
+
+- Add CodeSymbol/FileIndex/CodebaseIndex models
+- Add language_detector: extension -> Language registry
+- Add file_walker: gitignore-aware traversal excluding vendor/build noise
+- Add parser: cached Tree-sitter wrapper (Python/JS/TS/Java/Go)
+- Add symbol_extractor: recursive AST walk extracting functions/classes/
+  methods with parent linkage and qualified names, plus import statements
+- Add CodebaseIndexingService with commit-sha-keyed JSON caching
+- Add full indexing test suite
+
+Phase 3/14 of Repo-Aware Autonomous Debugging Agent (Token Efficiency Hackathon)

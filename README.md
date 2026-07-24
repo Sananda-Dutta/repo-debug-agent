@@ -86,3 +86,28 @@ feat(indexing): add Tree-sitter based multi-language codebase indexing
 - Add full indexing test suite
 
 Phase 3/14 of Repo-Aware Autonomous Debugging Agent (Token Efficiency Hackathon)
+
+### Status: Phase 3 Complete — Codebase Indexing (Tree-sitter/AST)
+
+- [x] Phase 1: Project Foundation & Config
+- [x] Phase 2: Repository Ingestion
+- [x] Phase 3: Codebase Indexing (Tree-sitter/AST)
+- [ ] Phase 4: Dependency Graph
+...
+
+### Usage (Phase 3)
+
+```python
+from pathlib import Path
+from repo_debug_agent.indexing.service import CodebaseIndexingService
+
+service = CodebaseIndexingService(index_store_dir=Path("vector_store/indices"))
+index = service.build_index(repo_root=Path("workspace/psf__requests"), commit_sha="<sha>")
+
+file_idx = index.get_file("requests/models.py")
+for symbol in file_idx.symbols:
+    print(symbol.qualified_name, symbol.kind, f"L{symbol.start_line}-{symbol.end_line}")
+```
+
+**Supported languages (symbol extraction):** Python, JavaScript, TypeScript, Java, Go.
+Other file types are still indexed (path, hash, line count) but without symbol/import extraction.

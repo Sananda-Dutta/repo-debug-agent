@@ -33,7 +33,7 @@ end
 # Unset irrelevant variables.
 deactivate nondestructive
 
-set -gx VIRTUAL_ENV /mnt/c/Projects/Github_projects/repo-debug-agent/venv
+set -gx VIRTUAL_ENV /mnt/c/projects/github_projects/repo-debug-agent/venv
 
 set -gx _OLD_VIRTUAL_PATH $PATH
 set -gx PATH "$VIRTUAL_ENV/"bin $PATH

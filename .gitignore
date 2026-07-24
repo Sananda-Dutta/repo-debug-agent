@@ -6,4 +6,5 @@ vector_store/
 logs/
 *.egg-info/
 .pytest_cache/
+venv/
 .venv/

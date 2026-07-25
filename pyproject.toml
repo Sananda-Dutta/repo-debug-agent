@@ -12,6 +12,10 @@ dependencies = [
     "tree-sitter-languages>=1.10.2",
     "pathspec>=0.12.1",
     "networkx>=3.3",
+    "sentence-transformers>=3.0.1",
+    "faiss-cpu>=1.8.0",
+    "chromadb>=0.5.5",
+    "openai>=1.40.0",
 ]
 
 [project.optional-dependencies]

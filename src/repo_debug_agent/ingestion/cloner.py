@@ -9,7 +9,7 @@ only tests targeting THIS module do.
 
 from pathlib import Path
 
-import git
+import git #this is gitpython
 from git.exc import GitCommandError
 
 from repo_debug_agent.core.logger import logger

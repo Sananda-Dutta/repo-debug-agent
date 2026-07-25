@@ -6,7 +6,7 @@ Pure functions, zero I/O — takes text extracted from source, returns
 structured data. Fully unit-testable without any filesystem/repo context.
 """
 
-import re
+import re #Because we're using Regular Expressions (Regex) to recognize different import formats.
 
 from repo_debug_agent.dependency_graph.models import ParsedImport
 from repo_debug_agent.indexing.models import Language

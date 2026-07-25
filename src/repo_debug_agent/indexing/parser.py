@@ -6,6 +6,8 @@ It does NOT know what a "function" looks like in that language's
 grammar — that's symbol_extractor.py's job. This separation is what
 lets us add a new language here in one line, and separately teach
 symbol_extractor.py that language's node-type names.
+
+This file does: Read the code and convert it into a tree (AST).
 """
 
 from tree_sitter import Tree

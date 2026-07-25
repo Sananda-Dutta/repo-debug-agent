@@ -111,3 +111,33 @@ for symbol in file_idx.symbols:
 
 **Supported languages (symbol extraction):** Python, JavaScript, TypeScript, Java, Go.
 Other file types are still indexed (path, hash, line count) but without symbol/import extraction.
+
+
+### Status: Phase 4 Complete — Dependency Graph Construction
+
+- [x] Phase 1: Project Foundation & Config
+- [x] Phase 2: Repository Ingestion
+- [x] Phase 3: Codebase Indexing (Tree-sitter/AST)
+- [x] Phase 4: Dependency Graph
+- [ ] Phase 5: Vector Store (FAISS/Chroma)
+...
+
+### Usage (Phase 4)
+
+```python
+from repo_debug_agent.dependency_graph.service import DependencyGraphService
+
+graph = DependencyGraphService().build(index)  # index from Phase 3
+
+graph.imports("app/main.py")            # files/externals main.py directly imports
+graph.imported_by("app/utils.py")       # files that directly import utils.py
+graph.blast_radius("app/utils.py", depth=2)     # transitive impact if utils.py breaks
+graph.dependencies_of("app/main.py", depth=2)   # transitive context needed to understand main.py
+graph.find_cycles()                     # circular import detection
+graph.stats()                           # GraphStats summary
+```
+
+**Scope note:** import resolution handles direct/relative Python imports and
+relative JS/TS imports precisely. Java/Go imports and JS/TS bundler aliases
+(webpack/tsconfig paths) are recorded as external dependencies rather than
+guessed at — a deliberate scope boundary documented here.

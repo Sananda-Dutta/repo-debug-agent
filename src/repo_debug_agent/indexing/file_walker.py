@@ -9,7 +9,7 @@ gitignored but must never be walked).
 """
 
 from pathlib import Path
-import pathspec
+import pathspec #This is a library that understands .gitignore
 
 from repo_debug_agent.core.logger import logger
 

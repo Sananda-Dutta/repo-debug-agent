@@ -8,6 +8,8 @@ CodebaseIndex.files dict — i.e. the only place "does this path exist
 in the repo" is checked.
 """
 
+#Take a parsed import and figure out whether it points to a file inside the repository or to an external library.
+
 from pathlib import PurePosixPath
 
 from repo_debug_agent.dependency_graph.models import ParsedImport

@@ -38,7 +38,6 @@ def resolve_import(
     # as external for now rather than guessing incorrectly.
     return None
 
-
 def _resolve_python(parsed: ParsedImport, importing_file: str, index: CodebaseIndex) -> str | None:
     importing_dir = PurePosixPath(importing_file).parent
 
@@ -46,11 +45,27 @@ def _resolve_python(parsed: ParsedImport, importing_file: str, index: CodebaseIn
         base_dir = importing_dir
         for _ in range(parsed.relative_level - 1):
             base_dir = base_dir.parent
-        module_parts = parsed.module.split(".") if parsed.module else []
-        candidate_dir = base_dir
-        for part in module_parts:
-            candidate_dir = candidate_dir / part
-        return _match_candidate(candidate_dir, index)
+
+        if parsed.module:
+            # "from .sub.pkg import x" -> module = "sub.pkg", a real dotted path
+            module_parts = parsed.module.split(".")
+            candidate_dir = base_dir
+            for part in module_parts:
+                candidate_dir = candidate_dir / part
+            return _match_candidate(candidate_dir, index)
+
+        # "from . import x" / "from .. import x, y" -> module is EMPTY.
+        # Here each imported name IS the submodule (or package) being
+        # imported, relative to base_dir. Try each until one resolves;
+        # a single multi-name "from . import a, b" statement only ever
+        # produces ONE edge in our file-level graph (documented scope
+        # limit — see Phase 4 design notes), so we return the first hit.
+        for name in parsed.imported_names:
+            candidate = base_dir / name
+            resolved = _match_candidate(candidate, index)
+            if resolved:
+                return resolved
+        return None
 
     # Absolute-style import: try treating the FIRST dotted segment as
     # matching a top-level package name found in the repo, only if the

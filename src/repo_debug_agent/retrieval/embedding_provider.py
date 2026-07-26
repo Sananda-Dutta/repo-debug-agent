@@ -10,6 +10,7 @@ to test chunking/storage/search logic).
 '''This file abstracts the embedding process, allowing the rest of your application to generate semantic vectors 
 from code chunks without caring whether they come from a local SentenceTransformer model or OpenAI's embedding API.'''
 
+#How do we convert code into numbers (vectors) that can be searched semantically?
 
 from abc import ABC, abstractmethod
 

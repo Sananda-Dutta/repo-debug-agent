@@ -5,6 +5,7 @@ Both implementations persist to disk, keyed by commit_sha, mirroring
 Phase 3's caching pattern — re-running against the same commit loads
 the existing index instead of re-embedding everything.
 """
+#Now that I have vectors, where do I store them and how do I search them later?
 
 from abc import ABC, abstractmethod
 from pathlib import Path

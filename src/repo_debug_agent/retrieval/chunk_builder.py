@@ -16,7 +16,10 @@ selected as relevant.
 from pathlib import Path
 
 from repo_debug_agent.indexing.models import CodebaseIndex
-from repo_debug_agent.retrieval.models import CodeChunk
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from repo_debug_agent.retrieval.models import CodeChunk
 
 _MAX_EMBED_TEXT_CHARS = 1500
 

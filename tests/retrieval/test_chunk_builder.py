@@ -1,4 +1,12 @@
 # tests/retrieval/test_chunk_builder.py
+
+'''test_chunk_builder.py: Verifies that code symbols are converted into correctly formatted CodeChunk objects.
+test_embedding_provider.py: Verifies that the fake embedding provider produces deterministic vectors without relying on external models or APIs.
+test_vector_store.py: Verifies that the vector store can add, search, save, and reload embeddings correctly.
+test_service.py: Verifies that the entire semantic search pipeline—from indexing code to retrieving relevant results—works end to end.
+'''
+
+
 from pathlib import Path
 from repo_debug_agent.retrieval.chunk_builder import build_chunks
 from repo_debug_agent.indexing.models import CodebaseIndex, FileIndex, CodeSymbol, SymbolKind, Language

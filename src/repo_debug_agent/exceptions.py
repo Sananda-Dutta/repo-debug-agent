@@ -26,3 +26,16 @@ class CloneFailedError(IngestionError):
 
 class RepoValidationError(IngestionError):
     """Raised when a cloned/local repo fails post-clone sanity checks."""
+    
+
+class FailureAnalysisError(AgentError):
+    """Base exception for stack trace / test failure analysis errors."""
+
+
+class TestRunError(FailureAnalysisError):
+    """
+    Raised when pytest itself could not be invoked or produced no report
+    (e.g. missing plugin, timeout, bad command). NOT raised when tests
+    run successfully but some of them fail — that's a normal, expected
+    FailureReport result, not an error.
+    """

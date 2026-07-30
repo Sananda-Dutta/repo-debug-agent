@@ -141,3 +141,36 @@ graph.stats()                           # GraphStats summary
 relative JS/TS imports precisely. Java/Go imports and JS/TS bundler aliases
 (webpack/tsconfig paths) are recorded as external dependencies rather than
 guessed at — a deliberate scope boundary documented here.
+
+#Day 5
+### Status: Phase 5 Complete — Vector Store & Embeddings
+
+- [x] Phase 1: Project Foundation & Config
+- [x] Phase 2: Repository Ingestion
+- [x] Phase 3: Codebase Indexing (Tree-sitter/AST)
+- [x] Phase 4: Dependency Graph
+- [x] Phase 5: Vector Store (FAISS/Chroma)
+- [ ] Phase 6: Stack Trace & Failing Test Parser
+...
+
+### Usage (Phase 5)
+
+```python
+from repo_debug_agent.retrieval.service import SemanticSearchService
+from repo_debug_agent.retrieval.embedding_provider import get_embedding_provider
+from repo_debug_agent.retrieval.vector_store import get_vector_store
+
+embedder = get_embedding_provider("local")   # or "openai" (needs OPENAI_API_KEY)
+store = get_vector_store("faiss", persist_dir, embedder.dimension)  # or "chroma"
+
+service = SemanticSearchService(embedder, store)
+service.index_codebase(index, repo_root)      # index from Phase 3
+
+results = service.search("connection timeout while refreshing token", k=5)
+for r in results:
+    print(r.score, r.chunk.qualified_name, r.chunk.file_path, r.chunk.start_line)
+```
+
+**Backend choice:** Local embeddings (`sentence-transformers`, free/offline) are the
+default. Set `OPENAI_API_KEY` and pass `"openai"` for higher-quality embeddings at
+API cost. FAISS is the default vector store; pass `"chroma"` to use ChromaDB instead.

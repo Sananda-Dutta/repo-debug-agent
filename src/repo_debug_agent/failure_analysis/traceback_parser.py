@@ -2,11 +2,19 @@
 Parses raw stack trace text (standard Python `Traceback (most recent
 call last):` format) into a structured ParsedException.
 
-This is a pure, dependency-free regex state machine — zero I/O, fully
-unit-testable with plain strings. It is used by BOTH input paths:
-a user-pasted trace, and pytest's own `--tb=native` output (Phase 6
-deliberately forces pytest into this same standard format so we only
-maintain ONE parsing grammar — see Phase 6 design notes).
+This is a pure, dependency-free parser — zero I/O, fully unit-testable
+with plain strings. It is used by BOTH input paths: a user-pasted
+trace, and pytest's own `--tb=native` output (Phase 6 deliberately
+forces pytest into this same standard format so we only maintain ONE
+parsing grammar — see Phase 6 design notes).
+
+Frame/code-context/caret-decoration lines are always INDENTED; the
+final exception type/message line is always UNINDENTED (column 0).
+We rely on that structural fact to find the boundary between "call
+stack" and "exception header" — not content pattern-matching, which
+is unreliable (an ordinary source line like `result: TResult = func()`
+looks exactly like an "ExceptionType: message" header by content
+alone, but is clearly not one once indentation is considered).
 
 Scope boundary (documented, not a bug): if the text contains chained
 exceptions ("During handling of the above exception..." / "The above
@@ -21,8 +29,33 @@ from repo_debug_agent.failure_analysis.models import ParsedException, StackFrame
 _TRACEBACK_HEADER = re.compile(r"^Traceback \(most recent call last\):\s*$")
 _FRAME_LINE = re.compile(r'^\s*File "(?P<file>[^"]+)", line (?P<line>\d+), in (?P<func>.+?)\s*$')
 _EXCEPTION_HEADER = re.compile(r"^(?P<exc_type>[A-Za-z_][\w.]*)\s*:\s*(?P<message>.*)$")
-_BARE_EXCEPTION = re.compile(r"^(?P<exc_type>[A-Za-z_][\w.]*)\s*$")
-_CARET_DECORATION_LINE = re.compile(r"^[\^~\s]+$")
+_BARE_EXCEPTION = re.compile(r"^(?P<exc_type>[A-Za-z_][\w.]*)\s*$")  # e.g. bare "StopIteration"
+_CARET_DECORATION_LINE = re.compile(r"^[\^~\s]+$")  # PEP 657 fine-grained error location markers
+
+
+def parse_traceback(raw_text: str) -> ParsedException | None:
+    """
+    Parse `raw_text` into a ParsedException, or None if no recognizable
+    traceback block is found at all (e.g. the text is unrelated noise).
+    """
+    if not raw_text:
+        return None
+
+    lines = raw_text.splitlines()
+    header_indices = [i for i, line in enumerate(lines) if _TRACEBACK_HEADER.match(line)]
+    if not header_indices:
+        return None
+
+    start = header_indices[-1] + 1  # only the LAST (most recent) traceback block
+    frames, exception_start_idx = _parse_frames(lines, start)
+    exc_type, message = _parse_exception_header(lines, exception_start_idx)
+
+    return ParsedException(
+        exception_type=exc_type,
+        message=message,
+        frames=frames,
+        raw_traceback=raw_text,
+    )
 
 
 def _is_decoration_line(line: str) -> bool:
@@ -37,13 +70,8 @@ def _parse_frames(lines: list[str], start: int) -> tuple[list[StackFrame], int]:
     """
     Walk lines from `start`, collecting StackFrame entries.
 
-    Frame/code-context/caret lines are ALWAYS indented; the exception
-    type/message line is ALWAYS unindented (column 0). We use THAT
-    structural fact to decide where the frame stack ends — not content
-    pattern-matching, which is unreliable (e.g. a source line like
-    `result: TResult | None = func()` looks exactly like an
-    "ExceptionType: message" header by content alone, but is clearly
-    NOT one once you look at indentation).
+    Uses indentation (not content-sniffing) to decide where the frame
+    stack ends and the exception header begins.
     """
     frames: list[StackFrame] = []
     i = start
@@ -93,6 +121,7 @@ def _parse_frames(lines: list[str], start: int) -> tuple[list[StackFrame], int]:
 
 
 def _parse_exception_header(lines: list[str], start: int) -> tuple[str, str]:
+    """Extract exception type + message from the lines following the frame stack."""
     exception_lines = []
     i = start
     while i < len(lines) and lines[i].strip():

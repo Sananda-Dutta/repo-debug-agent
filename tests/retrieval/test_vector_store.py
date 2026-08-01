@@ -2,7 +2,7 @@
 from pathlib import Path
 from repo_debug_agent.retrieval.vector_store import FAISSVectorStore
 from repo_debug_agent.retrieval.models import CodeChunk
-from tests.retrieval.test_embedding_provider import FakeEmbeddingProvider
+from tests.support.fakes import FakeEmbeddingProvider
 
 
 def _sample_chunk(chunk_id: str) -> CodeChunk:

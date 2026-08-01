@@ -3,7 +3,7 @@ from pathlib import Path
 from repo_debug_agent.retrieval.service import SemanticSearchService
 from repo_debug_agent.retrieval.vector_store import FAISSVectorStore
 from repo_debug_agent.indexing.models import CodebaseIndex, FileIndex, CodeSymbol, SymbolKind, Language
-from tests.retrieval.test_embedding_provider import FakeEmbeddingProvider
+from tests.support.fakes import FakeEmbeddingProvider
 
 
 def test_index_and_search_full_flow(tmp_path):

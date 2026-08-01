@@ -21,62 +21,66 @@ from repo_debug_agent.failure_analysis.models import ParsedException, StackFrame
 _TRACEBACK_HEADER = re.compile(r"^Traceback \(most recent call last\):\s*$")
 _FRAME_LINE = re.compile(r'^\s*File "(?P<file>[^"]+)", line (?P<line>\d+), in (?P<func>.+?)\s*$')
 _EXCEPTION_HEADER = re.compile(r"^(?P<exc_type>[A-Za-z_][\w.]*)\s*:\s*(?P<message>.*)$")
-_BARE_EXCEPTION = re.compile(r"^(?P<exc_type>[A-Za-z_][\w.]*)\s*$")  # e.g. bare "StopIteration"
+_BARE_EXCEPTION = re.compile(r"^(?P<exc_type>[A-Za-z_][\w.]*)\s*$")
+_CARET_DECORATION_LINE = re.compile(r"^[\^~\s]+$")
 
 
-def parse_traceback(raw_text: str) -> ParsedException | None:
-    """
-    Parse `raw_text` into a ParsedException, or None if no recognizable
-    traceback block is found at all (e.g. the text is unrelated noise).
-    """
-    if not raw_text:
-        return None
+def _is_decoration_line(line: str) -> bool:
+    return bool(line.strip()) and bool(_CARET_DECORATION_LINE.match(line))
 
-    lines = raw_text.splitlines()
-    header_indices = [i for i, line in enumerate(lines) if _TRACEBACK_HEADER.match(line)]
-    if not header_indices:
-        return None
 
-    start = header_indices[-1] + 1  # only the LAST (most recent) traceback block
-    frames, exception_start_idx = _parse_frames(lines, start)
-    exc_type, message = _parse_exception_header(lines, exception_start_idx)
-
-    return ParsedException(
-        exception_type=exc_type,
-        message=message,
-        frames=frames,
-        raw_traceback=raw_text,
-    )
+def _is_indented(line: str) -> bool:
+    return line.startswith(" ") or line.startswith("\t")
 
 
 def _parse_frames(lines: list[str], start: int) -> tuple[list[StackFrame], int]:
     """
-    Walk lines from `start`, collecting StackFrame entries until we hit
-    a line that isn't a "File ..." line and isn't a source-code context
-    line (i.e. we've reached the exception type/message).
+    Walk lines from `start`, collecting StackFrame entries.
 
-    Returns (frames, index_where_exception_header_begins).
+    Frame/code-context/caret lines are ALWAYS indented; the exception
+    type/message line is ALWAYS unindented (column 0). We use THAT
+    structural fact to decide where the frame stack ends — not content
+    pattern-matching, which is unreliable (e.g. a source line like
+    `result: TResult | None = func()` looks exactly like an
+    "ExceptionType: message" header by content alone, but is clearly
+    NOT one once you look at indentation).
     """
     frames: list[StackFrame] = []
     i = start
 
     while i < len(lines):
-        frame_match = _FRAME_LINE.match(lines[i])
-        if not frame_match:
-            if lines[i].strip():
-                break  # first non-frame, non-blank line = start of exception header
+        line = lines[i]
+        if not line.strip():
             i += 1
             continue
 
+        frame_match = _FRAME_LINE.match(line)
+        if not frame_match:
+            if not _is_indented(line):
+                break  # unindented, non-frame line = start of exception header
+            i += 1      # stray indented line with no owning frame; skip defensively
+            continue
+
+        i += 1
         code_line = None
-        next_i = i + 1
-        if next_i < len(lines):
-            candidate = lines[next_i]
-            is_another_frame = bool(_FRAME_LINE.match(candidate))
-            is_exception_header = bool(_EXCEPTION_HEADER.match(candidate.strip()))
-            if candidate.strip() and not is_another_frame and not is_exception_header:
-                code_line = candidate.strip()
-                i = next_i  # consumed as this frame's source line
+
+        # Consume this frame's indented source-context / caret lines,
+        # stopping at the next frame line OR the first unindented line.
+        while i < len(lines):
+            nxt = lines[i]
+            if not nxt.strip():
+                i += 1
+                continue
+            if not _is_indented(nxt):
+                break
+            if _FRAME_LINE.match(nxt):
+                break
+            if _is_decoration_line(nxt):
+                i += 1
+                continue
+            if code_line is None:
+                code_line = nxt.strip()
+            i += 1
 
         frames.append(StackFrame(
             file_path=frame_match.group("file"),
@@ -84,13 +88,11 @@ def _parse_frames(lines: list[str], start: int) -> tuple[list[StackFrame], int]:
             function_name=frame_match.group("func"),
             code_line=code_line,
         ))
-        i += 1
 
     return frames, i
 
 
 def _parse_exception_header(lines: list[str], start: int) -> tuple[str, str]:
-    """Extract exception type + message from the lines following the frame stack."""
     exception_lines = []
     i = start
     while i < len(lines) and lines[i].strip():

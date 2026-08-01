@@ -174,3 +174,38 @@ for r in results:
 **Backend choice:** Local embeddings (`sentence-transformers`, free/offline) are the
 default. Set `OPENAI_API_KEY` and pass `"openai"` for higher-quality embeddings at
 API cost. FAISS is the default vector store; pass `"chroma"` to use ChromaDB instead.
+
+
+#Phase 6/14
+### Status: Phase 6 Complete — Stack Trace & Failing Test Parser
+
+- [x] Phase 1: Project Foundation & Config
+- [x] Phase 2: Repository Ingestion
+- [x] Phase 3: Codebase Indexing (Tree-sitter/AST)
+- [x] Phase 4: Dependency Graph
+- [x] Phase 5: Vector Store (FAISS/Chroma)
+- [x] Phase 6: Stack Trace & Failing Test Parser
+- [ ] Phase 7: Relevant File Localization Engine
+...
+
+### Usage (Phase 6)
+
+```python
+from repo_debug_agent.failure_analysis.service import FailureAnalysisService
+
+service = FailureAnalysisService()
+
+# Path A: user-provided stack trace text
+parsed = service.analyze_pasted_traceback(raw_traceback_text)
+print(parsed.exception_type, parsed.innermost_frame.file_path, parsed.innermost_frame.line_number)
+
+# Path B: run the repo's own tests
+report = service.run_and_analyze_tests(repo_root, test_target="tests/")
+for failure in report.failures:
+    print(failure.node_id, failure.exception.exception_type if failure.exception else None)
+```
+
+**Scope note:** target-repo test dependencies must already be installed in the
+environment executing tests. Automatic per-repo virtualenv + dependency
+installation is a documented future enhancement, not implemented in Phase 6.
+Chained exceptions are parsed as their final (most recently raised) block only.

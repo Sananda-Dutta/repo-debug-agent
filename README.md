@@ -209,3 +209,33 @@ for failure in report.failures:
 environment executing tests. Automatic per-repo virtualenv + dependency
 installation is a documented future enhancement, not implemented in Phase 6.
 Chained exceptions are parsed as their final (most recently raised) block only.
+
+#phase 7
+### Status: Phase 7 Complete — Relevant File Localization Engine
+
+- [x] Phase 1: Project Foundation & Config
+- [x] Phase 2: Repository Ingestion
+- [x] Phase 3: Codebase Indexing (Tree-sitter/AST)
+- [x] Phase 4: Dependency Graph
+- [x] Phase 5: Vector Store (FAISS/Chroma)
+- [x] Phase 6: Stack Trace & Failing Test Parser
+- [x] Phase 7: Relevant File Localization Engine
+- [ ] Phase 8: Context Retrieval & Paritok Token Compression
+...
+
+### Usage (Phase 7)
+
+```python
+from repo_debug_agent.localization.service import FileLocalizationService
+
+service = FileLocalizationService(index, graph, search_service, repo_root=str(repo_root))
+result = service.localize(exception=parsed_exception, user_description="fails intermittently under load")
+
+for ranked in result.top_files(10):
+    print(f"{ranked.score:.2f}  {ranked.file_path}  sources={ranked.sources}  symbols={ranked.relevant_symbols}")
+```
+
+**Scoring model (tunable):** anchor=1.0, structural=0.6/hop_distance, semantic=0.5×similarity.
+Scores from multiple sources are summed, not maxed — files corroborated by more than
+one signal rank higher. If no stack-frame anchor resolves to a repo file, localization
+falls back to semantic-search-only.

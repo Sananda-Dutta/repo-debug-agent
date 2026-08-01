@@ -1,8 +1,3 @@
-# tests/retrieval/test_embedding_provider.py
-"""
-Fake provider used across retrieval tests so we NEVER hit network/torch
-in the test suite for logic that doesn't specifically test embedding backends.
-"""
 from tests.support.fakes import FakeEmbeddingProvider
 
 

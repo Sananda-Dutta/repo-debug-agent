@@ -7,7 +7,7 @@ from repo_debug_agent.indexing.models import CodebaseIndex, FileIndex, CodeSymbo
 from repo_debug_agent.dependency_graph.graph_builder import build_dependency_graph
 from repo_debug_agent.retrieval.service import SemanticSearchService
 from repo_debug_agent.retrieval.vector_store import FAISSVectorStore
-from tests.retrieval.test_embedding_provider import FakeEmbeddingProvider
+from tests.support.fakes import FakeEmbeddingProvider
 
 
 def test_localize_with_full_anchor(tmp_path):

@@ -39,3 +39,6 @@ class TestRunError(FailureAnalysisError):
     run successfully but some of them fail — that's a normal, expected
     FailureReport result, not an error.
     """
+
+class ContextRetrievalError(AgentError):
+    """Base exception for context fetching/compression failures."""

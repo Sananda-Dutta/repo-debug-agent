@@ -18,6 +18,7 @@ dependencies = [
     "openai>=1.40.0",
     "pytest-json-report>=1.5.0",
     "tiktoken>=0.7.0",
+    "langgraph",
 ]
 
 [project.optional-dependencies]

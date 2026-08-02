@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     workspace_dir: str = Field(default="./workspace", description="Where cloned repos are stored locally")
     vector_store_dir: str = Field(default="./vector_store", description="Where FAISS/Chroma indices are persisted")
 
+    # --- Paritok (hosted GPU compression, wired up fully in Phase 9) 
+    paritok_api_key: str = Field(default="", description="API key from paritok.com dashboard")
+    paritok_use_gpu_server: bool = Field(default=True, description="Route compression through Paritok's hosted GPU (required for hackathon judging)")
 
 @lru_cache
 def get_settings() -> Settings:
@@ -44,3 +47,4 @@ def get_settings() -> Settings:
     instead of re-reading/re-validating .env on every call site.
     """
     return Settings()
+

@@ -1,41 +1,48 @@
 """
-ParitokAdapter: the ISOLATED integration point for the real Paritok
-library.
+Paritok integration point.
 
-⚠️ STATUS: STUB. This class currently delegates to RuleBasedCompressor
-so the rest of the system (service.py, tests, Phase 9+) has a working,
-correctly-shaped dependency to build against RIGHT NOW.
+⚠️ IMPORTANT ARCHITECTURAL NOTE: Paritok is NOT a standalone
+compress(text) -> str function we call mid-pipeline. It's a
+middleware/proxy that compresses requests at the moment they're sent
+to the LLM (via paritok.ParitokClient wrapping the actual API client,
+or via the `paritok proxy` server). See:
+https://github.com/Paritok-official/paritok-4b-v1
 
-TO FINALIZE: once you provide Paritok's actual package name and
-usage docs/API signature, replace the body of `compress()` below
-with the real call. Everything else in this codebase — the
-TokenCompressor interface, the factory in compressor.py, and every
-caller — will continue to work unchanged, since ParitokAdapter
-already implements the same interface.
+Because of that, Paritok is NOT wired up as a TokenCompressor here in
+Phase 8 — there's no LLM call yet at this point in the pipeline. The
+real integration happens in Phase 9 (LLM Agent Layer), where we wrap
+our actual LLM client with paritok.ParitokClient, configured to route
+through Paritok's HOSTED GPU SERVER (required for hackathon judging —
+usage is verified against your Paritok account/API key on their
+dashboard, not self-hosted Ollama).
 
-Expected shape of the real integration (adjust once confirmed):
+This module exists in Phase 8 only to:
+1. Hold the config helper (`get_paritok_config`) both this phase and
+   Phase 9 can share.
+2. Document the integration point clearly so Phase 9 wires it
+   correctly instead of guessing.
 
-    import paritok  # or whatever the actual import is
-
-    class ParitokAdapter(TokenCompressor):
-        def __init__(self):
-            self._client = paritok.Compressor(...)  # or however it's constructed
-
-        def compress(self, text: str) -> str:
-            return self._client.compress(text)      # or whatever the real call is
+Setup (do this now, so Phase 9 can just import and go):
+    pip install -e ".[paritok]"
+    # Get an API key: https://paritok.com -> dashboard -> API keys
+    # Put it in .env as PARITOK_API_KEY=pk_live_...
 """
 
-from repo_debug_agent.core.logger import logger
-from repo_debug_agent.context_retrieval.compressor import TokenCompressor, RuleBasedCompressor
+from dataclasses import dataclass
+
+from repo_debug_agent.config.settings import get_settings
 
 
-class ParitokAdapter(TokenCompressor):
-    def __init__(self):
-        logger.warning(
-            "ParitokAdapter is a STUB — delegating to RuleBasedCompressor. "
-            "Provide Paritok's real API to finalize this integration."
-        )
-        self._fallback = RuleBasedCompressor()
+@dataclass
+class ParitokConfig:
+    api_key: str
+    use_gpu_server: bool
 
-    def compress(self, text: str) -> str:
-        return self._fallback.compress(text)
+
+def get_paritok_config() -> ParitokConfig:
+    """Read Paritok configuration from application settings (Phase 1's Settings)."""
+    settings = get_settings()
+    return ParitokConfig(
+        api_key=settings.paritok_api_key,
+        use_gpu_server=settings.paritok_use_gpu_server,
+    )

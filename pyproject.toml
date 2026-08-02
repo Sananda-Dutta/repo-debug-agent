@@ -27,6 +27,10 @@ dev = [
     "pytest-mock>=3.14.0",
 ]
 
+paritok = [
+    "paritok[proxy]>=1.2.7",
+]
+
 [build-system]
 requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"

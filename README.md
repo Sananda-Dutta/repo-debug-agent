@@ -239,3 +239,43 @@ for ranked in result.top_files(10):
 Scores from multiple sources are summed, not maxed — files corroborated by more than
 one signal rank higher. If no stack-frame anchor resolves to a repo file, localization
 falls back to semantic-search-only.
+
+### Status: Phase 8 Complete — Context Retrieval & Token Compression
+
+- [x] Phase 1: Project Foundation & Config
+- [x] Phase 2: Repository Ingestion
+- [x] Phase 3: Codebase Indexing (Tree-sitter/AST)
+- [x] Phase 4: Dependency Graph
+- [x] Phase 5: Vector Store (FAISS/Chroma)
+- [x] Phase 6: Stack Trace & Failing Test Parser
+- [x] Phase 7: Relevant File Localization Engine
+- [x] Phase 8: Context Retrieval & Token Compression
+- [ ] Phase 9: LLM Agent Layer (LangGraph multi-agent)
+...
+
+### ⚠️ Paritok Integration Status
+
+`context_retrieval/paritok_adapter.py` is currently a **documented stub**
+delegating to a rule-based compressor, pending confirmation of Paritok's
+actual package name and API. See that file's docstring for the exact
+integration point.
+
+### Usage (Phase 8)
+
+```python
+from repo_debug_agent.context_retrieval.service import ContextRetrievalService
+from repo_debug_agent.context_retrieval.compressor import get_compressor
+
+service = ContextRetrievalService(get_compressor("rule_based"))  # or "naive" / "paritok"
+context = service.build_context(localization_result, index, repo_root, token_budget=8000)
+
+print(context.usage.baseline_token_count, "->", context.usage.compressed_token_count)
+print(f"{context.usage.compression_ratio:.1%} reduction")
+print(context.assembled_text)  # ready to hand to Phase 9's LLM agent
+```
+
+**Baseline definition (important for interpreting the metric):** the baseline
+is the full, uncompressed text of every file the localization engine ranked
+as relevant — NOT the entire repository. This isolates compression's specific
+contribution from localization's contribution, which is already measured
+separately in Phase 7.

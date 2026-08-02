@@ -61,12 +61,15 @@ class RuleBasedCompressor(TokenCompressor):
         collapsed = self._MULTIPLE_BLANK_LINES.sub("\n\n", collapsed)
         return collapsed.strip("\n")
 
-
 def get_compressor(strategy: str) -> TokenCompressor:
-    """Factory: instantiate the configured compression strategy."""
-    if strategy == "paritok":
-        from repo_debug_agent.context_retrieval.paritok_adapter import ParitokAdapter
-        return ParitokAdapter()
+    """
+    Factory: instantiate the configured LOCAL compression strategy.
+
+    NOTE: "paritok" is intentionally NOT a valid value here. Paritok
+    compresses at the LLM-call boundary (see paritok_adapter.py's
+    docstring) and is wired up in Phase 9 via paritok.ParitokClient,
+    not as a TokenCompressor in this local pipeline.
+    """
     if strategy == "rule_based":
         return RuleBasedCompressor()
     return NaiveCompressor()

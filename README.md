@@ -279,3 +279,15 @@ is the full, uncompressed text of every file the localization engine ranked
 as relevant — NOT the entire repository. This isolates compression's specific
 contribution from localization's contribution, which is already measured
 separately in Phase 7.
+
+Built with [Paritok](https://github.com/Paritok-official/paritok-4b-v1).
+
+[![Built with Paritok](https://img.shields.io/badge/Built%20with-Paritok-1f2d3d)](https://github.com/Paritok-official/paritok-4b-v1)
+
+### ⚠️ Paritok Integration Status
+Paritok compresses at the LLM-call boundary, not as a standalone text
+transform. It is fully wired up in **Phase 9 (LLM Agent Layer)** via
+`paritok.ParitokClient`, configured with `use_gpu_server: true` to run
+on Paritok's hosted GPU (required for hackathon dashboard verification).
+Phase 8 handles context *selection* (localization → fetch → budget);
+Phase 9 is where the actual, measured Paritok compression happens.

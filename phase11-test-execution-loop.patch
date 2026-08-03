@@ -1,0 +1,577 @@
+diff --git a/README.md b/README.md
+index 0136b4b..4550b2d 100644
+--- a/README.md
++++ b/README.md
+@@ -284,7 +284,7 @@ Built with [Paritok](https://github.com/Paritok-official/paritok-4b-v1).
+ 
+ [![Built with Paritok](https://img.shields.io/badge/Built%20with-Paritok-1f2d3d)](https://github.com/Paritok-official/paritok-4b-v1)
+ 
+-### Status: Phase 10 Complete — Fix Suggestion & Patching
++### Status: Phase 11 Complete — Test Execution Loop
+ 
+ - [x] Phase 1: Project Foundation & Config
+ - [x] Phase 2: Repository Ingestion
+@@ -296,7 +296,7 @@ Built with [Paritok](https://github.com/Paritok-official/paritok-4b-v1).
+ - [x] Phase 8: Context Retrieval & Token Compression
+ - [x] Phase 9: LLM Agent Layer (LangGraph multi-agent)
+ - [x] Phase 10: Fix Suggestion & Patching
+-- [ ] Phase 11: Test Execution Loop
++- [x] Phase 11: Test Execution Loop
+ - [ ] Phase 12: Token Usage Dashboard
+ - [ ] Phase 13: FastAPI Service Layer
+ - [ ] Phase 14: Final Evaluation & Packaging
+@@ -416,6 +416,71 @@ if not apply_result.success:
+ patch_service.rollback(apply_result)
+ ```
+ 
+-Running the actual test suite against an applied fix (and deciding
+-whether to keep it or roll back automatically) is Phase 11's job, not
+-this one — Phase 10 only applies/reverts; it doesn't judge correctness.
+\ No newline at end of file
++## Phase 11: Test Execution Loop
++
++Ties Phases 6, 9, and 10 together into the actual "autonomous" part of
++the agent: run the repo's own tests, ask the LLM for a fix, apply it,
++re-run the tests, and decide whether to keep it — repeating up to
++`max_debug_iterations` (from `Settings`, default 5).
++
++### Why re-run the FULL test suite, not just the target test
++
++A fix that makes the target test pass but breaks two others isn't a
++fix — `TestExecutionLoopService` re-runs the whole scoped test suite
++(or `test_target` if you narrow it) after every attempt and diffs the
++failing node IDs against the baseline:
++
++- **Target(s) now pass, nothing new broke** → `FIXED`, kept.
++- **Target(s) now pass, but something else broke** → `REGRESSED`,
++  automatically rolled back via Phase 10's `PatchApplicator.rollback()`
++  — a regression is never silently kept just because the original bug
++  is gone.
++- **Target(s) still failing** → `NO_CHANGE`, rolled back, loop continues.
++- **pytest itself couldn't run after the patch** (e.g. a syntax error
++  the LLM introduced) → `RUN_FAILED`, rolled back.
++- **The fix suggestion wasn't parseable, or didn't apply at all** →
++  `NO_CHANGE` recorded without ever touching the filesystem.
++
++### Why the prompt changes between iterations
++
++Localization (Phase 7) is deliberately NOT re-run between iterations —
++the loop is given one fixed target (a `LocalizationResult`, precomputed
++or via a `localization_service`). What DOES change is the description
++fed to Phase 9: after a rejected attempt, the next call is told exactly
++which target test(s) are still failing and with what exception, so a
++bad first attempt doesn't just get silently re-asked the same question
++and produce the same (or an equally wrong) answer.
++
++### Usage (Phase 11)
++
++```python
++from repo_debug_agent.agent.service import LLMAgentService
++from repo_debug_agent.test_loop.service import TestExecutionLoopService
++from repo_debug_agent.context_retrieval.compressor import get_compressor
++
++with LLMAgentService(compressor=get_compressor("rule_based")) as agent:
++    loop = TestExecutionLoopService(agent, max_iterations=5)
++    result = loop.run(
++        repo_root=repo_metadata.local_path,
++        index=codebase_index,
++        localization_result=localization_result,  # from Phase 7
++    )
++
++print("Fixed!" if result.success else "Gave up after all iterations.")
++print(f"{len(result.iterations)} attempt(s) made")
++print(f"Paritok hosted-GPU savings across the whole run: "
++      f"{result.total_paritok_tokens_saved} tokens, "
++      f"{result.total_paritok_requests} requests")
++
++for record in result.iterations:
++    print(record.iteration, record.outcome.value, record.notes)
++```
++
++If the baseline test run already has no failures, `run()` returns
++`success=True` immediately without ever calling the LLM — nothing to
++fix means no Paritok usage either, which matters for interpreting the
++dashboard numbers on a run that finds nothing wrong.
++
++Turning `TestLoopResult` into a report worth showing a judge (aggregate
++Paritok savings across a full run, iteration-by-iteration token/cost
++breakdown) is Phase 12's job, not this one.
+\ No newline at end of file
+diff --git a/src/repo_debug_agent/test_loop/__init__.py b/src/repo_debug_agent/test_loop/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/src/repo_debug_agent/test_loop/models.py b/src/repo_debug_agent/test_loop/models.py
+new file mode 100644
+index 0000000..6e2ff9b
+--- /dev/null
++++ b/src/repo_debug_agent/test_loop/models.py
+@@ -0,0 +1,51 @@
++"""
++Data models for the Test Execution Loop (Phase 11).
++"""
++
++from enum import Enum
++
++from pydantic import BaseModel, Field
++
++from repo_debug_agent.agent.models import FixSuggestion
++from repo_debug_agent.context_retrieval.models import TokenUsageReport
++from repo_debug_agent.failure_analysis.models import FailureReport
++from repo_debug_agent.patching.models import PatchApplyResult
++
++
++class IterationOutcome(str, Enum):
++    """What happened after applying and testing one candidate fix."""
++
++    FIXED = "fixed"  # target failure(s) now pass, no new failures introduced -> KEPT
++    NO_CHANGE = "no_change"  # couldn't parse/apply the fix, or target still fails -> rolled back
++    REGRESSED = "regressed"  # target fixed but new failures appeared elsewhere -> rolled back
++    RUN_FAILED = "run_failed"  # applied, but pytest itself couldn't run afterward -> rolled back
++
++
++class IterationRecord(BaseModel):
++    """Full record of one fix-test iteration, kept whether it succeeded or not
++    (this is the audit trail — also raw material for Phase 12's dashboard)."""
++
++    iteration: int
++    fix_suggestion: FixSuggestion
++    apply_result: PatchApplyResult | None = Field(default=None, description="None if parsing failed before any apply was attempted")
++    test_report: FailureReport | None = Field(default=None, description="None if the fix wasn't applied or pytest couldn't run")
++    outcome: IterationOutcome
++    usage: TokenUsageReport
++    notes: str = ""
++
++
++class TestLoopResult(BaseModel):
++    """Full result of running the loop to completion (success or exhausted iterations)."""
++
++    success: bool = Field(description="True iff a fix that resolves the ORIGINAL target failure(s) was kept")
++    iterations: list[IterationRecord]
++    baseline_report: FailureReport = Field(description="Test results before any fix was attempted")
++    final_report: FailureReport | None = Field(default=None, description="Test results after the loop finished")
++
++    @property
++    def total_paritok_tokens_saved(self) -> int:
++        return sum(record.usage.paritok_tokens_saved for record in self.iterations)
++
++    @property
++    def total_paritok_requests(self) -> int:
++        return sum(record.usage.paritok_requests for record in self.iterations)
+diff --git a/src/repo_debug_agent/test_loop/service.py b/src/repo_debug_agent/test_loop/service.py
+new file mode 100644
+index 0000000..b2fecbc
+--- /dev/null
++++ b/src/repo_debug_agent/test_loop/service.py
+@@ -0,0 +1,165 @@
++"""
++TestExecutionLoopService: single public entrypoint for Phase 11.
++
++Orchestrates the full debug cycle: run the repo's own tests (Phase 6) to
++get a baseline -> repeatedly ask Phase 9 for a fix -> apply it (Phase 10)
++-> re-run tests -> decide whether to keep or roll back -> stop when the
++target failure(s) are resolved, a hard iteration cap is hit, or nothing
++is parseable/applicable.
++
++Deliberately does NOT re-run localization (Phase 7) between iterations —
++it's given a fixed target (either a precomputed LocalizationResult, or a
++localization_service to compute it once). What changes between
++iterations is the PROMPT: after a failed attempt, the next one is told
++what's still failing, so it isn't just re-asked the same question.
++"""
++
++from __future__ import annotations
++
++from pathlib import Path
++
++from repo_debug_agent.agent.models import FixSuggestion
++from repo_debug_agent.agent.service import LLMAgentService
++from repo_debug_agent.config.settings import get_settings
++from repo_debug_agent.context_retrieval.models import TokenUsageReport
++from repo_debug_agent.core.logger import logger
++from repo_debug_agent.exceptions import PatchParsingError, TestRunError
++from repo_debug_agent.failure_analysis.models import FailureReport, ParsedException
++from repo_debug_agent.failure_analysis.pytest_runner import run_tests
++from repo_debug_agent.indexing.models import CodebaseIndex
++from repo_debug_agent.localization.models import LocalizationResult
++from repo_debug_agent.localization.service import FileLocalizationService
++from repo_debug_agent.patching.models import PatchApplyResult
++from repo_debug_agent.patching.service import PatchService
++from repo_debug_agent.test_loop.models import IterationOutcome, IterationRecord, TestLoopResult
++
++_DEFAULT_TOKEN_BUDGET = 8000
++
++
++class TestExecutionLoopService:
++    def __init__(
++        self,
++        agent_service: LLMAgentService,
++        max_iterations: int | None = None,
++        patch_service_factory=PatchService,
++    ):
++        self._agent = agent_service
++        settings = get_settings()
++        self._max_iterations = max_iterations or settings.max_debug_iterations
++        # Injectable so tests can substitute a fake PatchService without a real git checkout.
++        self._patch_service_factory = patch_service_factory
++
++    def run(
++        self,
++        repo_root: Path,
++        index: CodebaseIndex,
++        test_target: str = "",
++        localization_service: FileLocalizationService | None = None,
++        exception: ParsedException | None = None,
++        user_description: str = "",
++        localization_result: LocalizationResult | None = None,
++        token_budget: int = _DEFAULT_TOKEN_BUDGET,
++    ) -> TestLoopResult:
++        baseline = run_tests(repo_root, test_target=test_target)
++        if not baseline.has_failures:
++            logger.info("Baseline test run has no failures — nothing to fix.")
++            return TestLoopResult(success=True, iterations=[], baseline_report=baseline, final_report=baseline)
++
++        target_node_ids = {f.node_id for f in baseline.failures}
++        patch_service = self._patch_service_factory(repo_root)
++        iterations: list[IterationRecord] = []
++        current_report = baseline
++
++        for i in range(1, self._max_iterations + 1):
++            iteration_description = self._build_iteration_description(user_description, current_report, target_node_ids)
++
++            agent_result = self._agent.debug(
++                repo_root=repo_root,
++                index=index,
++                localization_service=localization_service,
++                exception=exception,
++                user_description=iteration_description,
++                localization_result=localization_result,
++                token_budget=token_budget,
++            )
++            usage = agent_result.usage
++
++            try:
++                apply_result = patch_service.apply(agent_result.fix_suggestion)
++            except PatchParsingError as exc:
++                iterations.append(IterationRecord(
++                    iteration=i, fix_suggestion=agent_result.fix_suggestion, apply_result=None,
++                    test_report=None, outcome=IterationOutcome.NO_CHANGE, usage=usage, notes=str(exc),
++                ))
++                continue
++
++            if not apply_result.success:
++                iterations.append(IterationRecord(
++                    iteration=i, fix_suggestion=agent_result.fix_suggestion, apply_result=apply_result,
++                    test_report=None, outcome=IterationOutcome.NO_CHANGE, usage=usage,
++                    notes=apply_result.error or "Patch did not apply.",
++                ))
++                continue
++
++            record, resolved = self._evaluate(i, agent_result.fix_suggestion, apply_result, usage,
++                                                patch_service, repo_root, test_target, target_node_ids)
++            iterations.append(record)
++            if record.test_report is not None:
++                current_report = record.test_report
++
++            if resolved:
++                return TestLoopResult(success=True, iterations=iterations, baseline_report=baseline,
++                                       final_report=record.test_report)
++
++        logger.warning(f"Exhausted {self._max_iterations} iteration(s) without resolving the target failure(s).")
++        return TestLoopResult(success=False, iterations=iterations, baseline_report=baseline, final_report=current_report)
++
++    def _evaluate(
++        self, iteration: int, fix_suggestion: FixSuggestion, apply_result: PatchApplyResult, usage: TokenUsageReport,
++        patch_service: PatchService, repo_root: Path, test_target: str, target_node_ids: set[str],
++    ) -> tuple[IterationRecord, bool]:
++        """Re-run tests after applying a fix and decide FIXED / REGRESSED / NO_CHANGE.
++        Rolls back everything except a genuine FIXED outcome."""
++        try:
++            new_report = run_tests(repo_root, test_target=test_target)
++        except TestRunError as exc:
++            patch_service.rollback(apply_result)
++            return IterationRecord(
++                iteration=iteration, fix_suggestion=fix_suggestion, apply_result=apply_result, test_report=None,
++                outcome=IterationOutcome.RUN_FAILED, usage=usage, notes=f"pytest failed to run after applying fix: {exc}",
++            ), False
++
++        failing_node_ids = {f.node_id for f in new_report.failures}
++        still_failing = target_node_ids & failing_node_ids
++        newly_broken = failing_node_ids - target_node_ids
++
++        if not still_failing and not newly_broken:
++            return IterationRecord(
++                iteration=iteration, fix_suggestion=fix_suggestion, apply_result=apply_result, test_report=new_report,
++                outcome=IterationOutcome.FIXED, usage=usage,
++            ), True
++
++        if not still_failing and newly_broken:
++            patch_service.rollback(apply_result)
++            return IterationRecord(
++                iteration=iteration, fix_suggestion=fix_suggestion, apply_result=apply_result, test_report=new_report,
++                outcome=IterationOutcome.REGRESSED, usage=usage,
++                notes=f"Fixed the target failure(s) but introduced {len(newly_broken)} new failure(s); rolled back.",
++            ), False
++
++        patch_service.rollback(apply_result)
++        return IterationRecord(
++            iteration=iteration, fix_suggestion=fix_suggestion, apply_result=apply_result, test_report=new_report,
++            outcome=IterationOutcome.NO_CHANGE, usage=usage,
++            notes=f"{len(still_failing)} target failure(s) still failing; rolled back.",
++        ), False
++
++    @staticmethod
++    def _build_iteration_description(user_description: str, report: FailureReport, target_node_ids: set[str]) -> str:
++        """Feed the CURRENT state of the target failure(s) into the next
++        prompt, so a rejected attempt doesn't just get re-asked verbatim."""
++        lines = [f"{f.node_id}: {f.outcome.value}" + (f" — {f.exception.exception_type}: {f.exception.message}" if f.exception else "")
++                 for f in report.failures if f.node_id in target_node_ids]
++        failure_block = "\n".join(lines)
++        parts = [p for p in (user_description, f"Currently failing:\n{failure_block}" if failure_block else "") if p]
++        return "\n\n".join(parts)
+diff --git a/tests/test_loop/__init__.py b/tests/test_loop/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/tests/test_loop/test_service.py b/tests/test_loop/test_service.py
+new file mode 100644
+index 0000000..0c39e73
+--- /dev/null
++++ b/tests/test_loop/test_service.py
+@@ -0,0 +1,238 @@
++# tests/test_loop/test_service.py
++from pathlib import Path
++from types import SimpleNamespace
++
++import pytest
++
++import repo_debug_agent.test_loop.service as service_module
++from repo_debug_agent.agent.models import FixSuggestion
++from repo_debug_agent.context_retrieval.models import TokenUsageReport
++from repo_debug_agent.exceptions import PatchParsingError, TestRunError
++from repo_debug_agent.failure_analysis.models import FailureReport, ParsedException, TestFailure, TestOutcome
++from repo_debug_agent.indexing.models import CodebaseIndex
++from repo_debug_agent.patching.models import AppliedFile, PatchApplyResult
++from repo_debug_agent.test_loop.models import IterationOutcome
++from repo_debug_agent.test_loop.service import TestExecutionLoopService
++
++
++def _usage(saved=100, requests=1) -> TokenUsageReport:
++    return TokenUsageReport(
++        baseline_token_count=1000, compressed_token_count=300, units_available=3, units_included=2,
++        compression_ratio=0.7,
++    ).with_paritok_stats(requests=requests, tokens_saved=saved, compression_ratio=0.3, cost_saved_usd="$0.00")
++
++
++def _report(*, failing: list[str], passed: int = 5) -> FailureReport:
++    failures = [
++        TestFailure(node_id=node_id, file_path=node_id.split("::")[0], outcome=TestOutcome.FAILED,
++                    exception=ParsedException(exception_type="AssertionError", message="boom", raw_traceback=""))
++        for node_id in failing
++    ]
++    return FailureReport(total_tests=passed + len(failing), passed=passed, failed=len(failing), errors=0, skipped=0, failures=failures)
++
++
++class _FakeAgent:
++    def __init__(self):
++        self.calls: list[dict] = []
++
++    def debug(self, **kwargs):
++        self.calls.append(kwargs)
++        suggestion = FixSuggestion(raw_response="### File: app.py\n```python\nfixed = True\n```\n", model="gpt-4o-mini")
++        return SimpleNamespace(fix_suggestion=suggestion, usage=_usage())
++
++
++class _FakePatchService:
++    instances: list["_FakePatchService"] = []
++
++    def __init__(self, repo_root, apply_results=None):
++        self.repo_root = repo_root
++        self._apply_results = list(apply_results or [])
++        self.rollback_calls: list[PatchApplyResult] = []
++        _FakePatchService.instances.append(self)
++
++    def apply(self, fix_suggestion):
++        outcome = self._apply_results.pop(0)
++        if isinstance(outcome, Exception):
++            raise outcome
++        return outcome
++
++    def rollback(self, result):
++        self.rollback_calls.append(result)
++
++
++def _ok_apply_result() -> PatchApplyResult:
++    return PatchApplyResult(success=True, applied_files=[AppliedFile(file_path="app.py", backup_path="/tmp/x", existed_before=True)], backup_dir="/tmp")
++
++
++def _index() -> CodebaseIndex:
++    return CodebaseIndex(commit_sha="a", root_path="/repo", files={})
++
++
++@pytest.fixture(autouse=True)
++def _reset_fake_patch_service():
++    _FakePatchService.instances.clear()
++
++
++def test_no_baseline_failures_returns_success_without_calling_agent(monkeypatch):
++    monkeypatch.setattr(service_module, "run_tests", lambda repo_root, test_target="": _report(failing=[]))
++    agent = _FakeAgent()
++    loop = TestExecutionLoopService(agent, max_iterations=3, patch_service_factory=_FakePatchService)
++
++    result = loop.run(repo_root=Path("/repo"), index=_index())
++
++    assert result.success is True
++    assert result.iterations == []
++    assert agent.calls == []
++
++
++def test_fix_resolves_target_failure_and_stops(monkeypatch):
++    reports = iter([_report(failing=["tests/test_x.py::test_foo"]), _report(failing=[])])
++    monkeypatch.setattr(service_module, "run_tests", lambda repo_root, test_target="": next(reports))
++    agent = _FakeAgent()
++    loop = TestExecutionLoopService(
++        agent, max_iterations=5,
++        patch_service_factory=lambda repo_root: _FakePatchService(repo_root, apply_results=[_ok_apply_result()]),
++    )
++
++    result = loop.run(repo_root=Path("/repo"), index=_index())
++
++    assert result.success is True
++    assert len(result.iterations) == 1
++    assert result.iterations[0].outcome == IterationOutcome.FIXED
++    assert _FakePatchService.instances[0].rollback_calls == []  # kept, not rolled back
++    assert len(agent.calls) == 1
++
++
++def test_still_failing_rolls_back_and_exhausts_iterations(monkeypatch):
++    still_failing = _report(failing=["tests/test_x.py::test_foo"])
++    monkeypatch.setattr(service_module, "run_tests", lambda repo_root, test_target="": still_failing)
++    agent = _FakeAgent()
++    apply_results = [_ok_apply_result() for _ in range(3)]
++    loop = TestExecutionLoopService(
++        agent, max_iterations=3,
++        patch_service_factory=lambda repo_root: _FakePatchService(repo_root, apply_results=apply_results),
++    )
++
++    result = loop.run(repo_root=Path("/repo"), index=_index())
++
++    assert result.success is False
++    assert len(result.iterations) == 3
++    assert all(r.outcome == IterationOutcome.NO_CHANGE for r in result.iterations)
++    assert len(_FakePatchService.instances[0].rollback_calls) == 3
++
++
++def test_regression_rolls_back_and_loop_continues(monkeypatch):
++    reports = iter([
++        _report(failing=["tests/test_x.py::test_foo"]),  # baseline
++        _report(failing=["tests/test_y.py::test_new"]),  # iteration 1: target fixed, but new failure
++        _report(failing=[]),  # iteration 2: clean fix
++    ])
++    monkeypatch.setattr(service_module, "run_tests", lambda repo_root, test_target="": next(reports))
++    agent = _FakeAgent()
++    apply_results = [_ok_apply_result(), _ok_apply_result()]
++    loop = TestExecutionLoopService(
++        agent, max_iterations=5,
++        patch_service_factory=lambda repo_root: _FakePatchService(repo_root, apply_results=apply_results),
++    )
++
++    result = loop.run(repo_root=Path("/repo"), index=_index())
++
++    assert result.success is True
++    assert len(result.iterations) == 2
++    assert result.iterations[0].outcome == IterationOutcome.REGRESSED
++    assert result.iterations[1].outcome == IterationOutcome.FIXED
++    assert len(_FakePatchService.instances[0].rollback_calls) == 1  # only the regressed one
++
++
++def test_unparseable_fix_records_no_change_and_continues(monkeypatch):
++    reports = iter([_report(failing=["tests/test_x.py::test_foo"]), _report(failing=[])])
++    monkeypatch.setattr(service_module, "run_tests", lambda repo_root, test_target="": next(reports))
++    agent = _FakeAgent()
++    apply_results = [PatchParsingError("could not parse"), _ok_apply_result()]
++    loop = TestExecutionLoopService(
++        agent, max_iterations=5,
++        patch_service_factory=lambda repo_root: _FakePatchService(repo_root, apply_results=apply_results),
++    )
++
++    result = loop.run(repo_root=Path("/repo"), index=_index())
++
++    assert result.success is True
++    assert result.iterations[0].outcome == IterationOutcome.NO_CHANGE
++    assert result.iterations[0].apply_result is None
++    assert "could not parse" in result.iterations[0].notes
++    assert result.iterations[1].outcome == IterationOutcome.FIXED
++
++
++def test_unsuccessful_apply_result_records_no_change(monkeypatch):
++    monkeypatch.setattr(service_module, "run_tests", lambda repo_root, test_target="": _report(failing=["t::test_foo"]))
++    agent = _FakeAgent()
++    failed_apply = PatchApplyResult(success=False, applied_files=[], backup_dir=None, error="no changes found")
++    loop = TestExecutionLoopService(
++        agent, max_iterations=1,
++        patch_service_factory=lambda repo_root: _FakePatchService(repo_root, apply_results=[failed_apply]),
++    )
++
++    result = loop.run(repo_root=Path("/repo"), index=_index())
++
++    assert result.iterations[0].outcome == IterationOutcome.NO_CHANGE
++    assert result.iterations[0].notes == "no changes found"
++
++
++def test_pytest_failing_to_run_after_apply_triggers_rollback(monkeypatch):
++    call_count = {"n": 0}
++
++    def fake_run_tests(repo_root, test_target=""):
++        call_count["n"] += 1
++        if call_count["n"] == 1:
++            return _report(failing=["t::test_foo"])
++        raise TestRunError("pytest crashed")
++
++    monkeypatch.setattr(service_module, "run_tests", fake_run_tests)
++    agent = _FakeAgent()
++    loop = TestExecutionLoopService(
++        agent, max_iterations=1,
++        patch_service_factory=lambda repo_root: _FakePatchService(repo_root, apply_results=[_ok_apply_result()]),
++    )
++
++    result = loop.run(repo_root=Path("/repo"), index=_index())
++
++    assert result.iterations[0].outcome == IterationOutcome.RUN_FAILED
++    assert len(_FakePatchService.instances[0].rollback_calls) == 1
++
++
++def test_iteration_description_reflects_current_failure_state(monkeypatch):
++    reports = iter([
++        _report(failing=["tests/test_x.py::test_foo"]),
++        _report(failing=["tests/test_x.py::test_foo"]),
++        _report(failing=[]),
++    ])
++    monkeypatch.setattr(service_module, "run_tests", lambda repo_root, test_target="": next(reports))
++    agent = _FakeAgent()
++    apply_results = [_ok_apply_result(), _ok_apply_result()]
++    loop = TestExecutionLoopService(
++        agent, max_iterations=5,
++        patch_service_factory=lambda repo_root: _FakePatchService(repo_root, apply_results=apply_results),
++    )
++
++    loop.run(repo_root=Path("/repo"), index=_index(), user_description="Fix the failing test")
++
++    first_desc = agent.calls[0]["user_description"]
++    second_desc = agent.calls[1]["user_description"]
++    assert "Fix the failing test" in first_desc
++    assert "tests/test_x.py::test_foo" in first_desc
++    assert "AssertionError" in second_desc
++
++
++def test_total_paritok_stats_sum_across_iterations(monkeypatch):
++    reports = iter([_report(failing=["t::test_foo"]), _report(failing=[])])
++    monkeypatch.setattr(service_module, "run_tests", lambda repo_root, test_target="": next(reports))
++    agent = _FakeAgent()
++    loop = TestExecutionLoopService(
++        agent, max_iterations=5,
++        patch_service_factory=lambda repo_root: _FakePatchService(repo_root, apply_results=[_ok_apply_result()]),
++    )
++
++    result = loop.run(repo_root=Path("/repo"), index=_index())
++
++    assert result.total_paritok_tokens_saved == 100
++    assert result.total_paritok_requests == 1

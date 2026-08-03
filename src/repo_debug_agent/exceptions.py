@@ -43,5 +43,22 @@ class TestRunError(FailureAnalysisError):
 class ContextRetrievalError(AgentError):
     """Base exception for context fetching/compression failures."""
 
-class ParitokProxyError(Exception):
-    """Raised when the Paritok proxy cannot be started or communicated with."""
+
+class AgentLayerError(AgentError):
+    """Base exception for LLM agent layer (Phase 9) failures."""
+
+
+class ParitokProxyError(AgentLayerError):
+    """Raised when the local Paritok compression proxy fails to start or become healthy."""
+
+
+class PatchingError(AgentError):
+    """Base exception for Phase 10 (Fix Suggestion & Patching) failures."""
+
+
+class PatchParsingError(PatchingError):
+    """Raised when a fix suggestion can't be parsed into any applicable file change."""
+
+
+class PatchApplicationError(PatchingError):
+    """Raised when applying a parsed patch to the repo checkout fails."""

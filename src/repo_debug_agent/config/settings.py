@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     paritok_api_key: str = Field(default="", description="API key from paritok.com dashboard")
     paritok_use_gpu_server: bool = Field(default=True, description="Route compression through Paritok's hosted GPU (required for hackathon judging)")
 
+    paritok_proxy_port: int = Field(default=8080, description="Local port the Paritok compression proxy listens on (Phase 9)")
+
+    # --- LLM Agent Layer (Phase 9) ---
+    llm_model: str = Field(default="gpt-4o-mini", description="Model used for fix-suggestion LLM calls")
+
+
 @lru_cache
 def get_settings() -> Settings:
     """
@@ -47,4 +53,3 @@ def get_settings() -> Settings:
     instead of re-reading/re-validating .env on every call site.
     """
     return Settings()
-

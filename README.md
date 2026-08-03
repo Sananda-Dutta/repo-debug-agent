@@ -250,7 +250,7 @@ falls back to semantic-search-only.
 - [x] Phase 6: Stack Trace & Failing Test Parser
 - [x] Phase 7: Relevant File Localization Engine
 - [x] Phase 8: Context Retrieval & Token Compression
-- [ ] Phase 9: LLM Agent Layer (LangGraph multi-agent)
+- [x] Phase 9: LLM Agent Layer (LangGraph multi-agent)
 ...
 
 ### ⚠️ Paritok Integration Status
@@ -284,10 +284,81 @@ Built with [Paritok](https://github.com/Paritok-official/paritok-4b-v1).
 
 [![Built with Paritok](https://img.shields.io/badge/Built%20with-Paritok-1f2d3d)](https://github.com/Paritok-official/paritok-4b-v1)
 
-### ⚠️ Paritok Integration Status
-Paritok compresses at the LLM-call boundary, not as a standalone text
-transform. It is fully wired up in **Phase 9 (LLM Agent Layer)** via
-`paritok.ParitokClient`, configured with `use_gpu_server: true` to run
-on Paritok's hosted GPU (required for hackathon dashboard verification).
-Phase 8 handles context *selection* (localization → fetch → budget);
-Phase 9 is where the actual, measured Paritok compression happens.
+### Status: Phase 9 Complete — LLM Agent Layer (LangGraph)
+
+- [x] Phase 1: Project Foundation & Config
+- [x] Phase 2: Repository Ingestion
+- [x] Phase 3: Codebase Indexing (Tree-sitter/AST)
+- [x] Phase 4: Dependency Graph
+- [x] Phase 5: Vector Store (FAISS/Chroma)
+- [x] Phase 6: Stack Trace & Failing Test Parser
+- [x] Phase 7: Relevant File Localization Engine
+- [x] Phase 8: Context Retrieval & Token Compression
+- [x] Phase 9: LLM Agent Layer (LangGraph multi-agent)
+- [ ] Phase 10: Fix Suggestion & Patching
+- [ ] Phase 11: Test Execution Loop
+- [ ] Phase 12: Token Usage Dashboard
+- [ ] Phase 13: FastAPI Service Layer
+- [ ] Phase 14: Final Evaluation & Packaging
+
+### Real Paritok integration — SDK mode vs. proxy mode
+
+Phase 8's stub assumed `paritok.ParitokClient` would wrap our LLM client
+directly (SDK mode). After installing and reading the real `paritok`
+package (v1.2.x) for Phase 9, that assumption needed a correction:
+
+**`paritok.ParitokClient`'s SDK mode only supports `client.messages.create()`
+(Anthropic-shaped clients)** — its `_MessagesProxy` hardcodes a call to
+`self._parent._client.messages.create(**kwargs)`. This project's LLM client
+is `openai.OpenAI()`, whose Chat Completions interface is
+`client.chat.completions.create()` — SDK mode cannot wrap it.
+
+So Phase 9 uses Paritok's **proxy mode** instead — the mode Paritok's own
+README calls "primary, recommended" anyway:
+
+1. `LLMAgentService` starts a local `paritok proxy` subprocess
+   (`agent/paritok_proxy.py`), configured via a generated `paritok.yaml`
+   from our own `Settings` (`use_gpu_server: true` + the API key from
+   `.env`, satisfying the hackathon's dashboard-verification requirement).
+2. `agent/llm_client.py` points the existing `openai.OpenAI()` client's
+   `base_url` at that proxy — zero changes to the LLM provider.
+3. Every call diffs the proxy's `/stats` endpoint immediately before and
+   after, producing real, per-call `ParitokCallStats` (tokens saved,
+   compression ratio, estimated cost saved) — these flow into
+   `TokenUsageReport.paritok_*` fields via `.with_paritok_stats(...)`,
+   alongside Phase 8's own local-compression accounting.
+
+### Usage (Phase 9)
+
+```python
+from repo_debug_agent.agent.service import LLMAgentService
+from repo_debug_agent.context_retrieval.compressor import get_compressor
+
+with LLMAgentService(compressor=get_compressor("rule_based")) as agent:
+    result = agent.debug(
+        repo_root=repo_metadata.local_path,
+        index=codebase_index,
+        localization_result=localization_result,  # from Phase 7
+        token_budget=8000,
+    )
+
+print(result.fix_suggestion.raw_response)
+print("Phase 8 local compression:", result.usage.compression_ratio)
+print("Paritok hosted-GPU savings:", result.usage.paritok_tokens_saved, "tokens,",
+      result.usage.paritok_estimated_cost_saved_usd)
+```
+
+Setup required before running Phase 9 for real (not needed to run the
+test suite, which fakes the proxy/LLM client):
+
+```
+pip install -e ".[paritok]"
+# Sign up at https://paritok.com -> dashboard -> API keys
+# Put it in .env:
+#   PARITOK_API_KEY=pk_live_...
+#   PARITOK_USE_GPU_SERVER=true
+#   OPENAI_API_KEY=sk-...
+```
+
+Fix **parsing and application** (turning `fix_suggestion.raw_response`
+into an applied, verifiable patch) is Phase 10's job, not this one.

@@ -42,3 +42,6 @@ class TestRunError(FailureAnalysisError):
 
 class ContextRetrievalError(AgentError):
     """Base exception for context fetching/compression failures."""
+
+class ParitokProxyError(Exception):
+    """Raised when the Paritok proxy cannot be started or communicated with."""
